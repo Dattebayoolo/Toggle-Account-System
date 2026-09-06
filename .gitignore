@@ -1,0 +1,31 @@
+# ── Secrets / environment ────────────────────────────────
+# Never commit real credentials. Copy .env.example -> .env locally.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Node ─────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── Local PostgreSQL data (portable install beside the repo) ──
+pgsql/data/
+data/
+*.log
+server.log
+
+# ── Build / tooling ──────────────────────────────────────
+dist/
+build/
+coverage/
+*.pid
+*.seed
+
+# ── OS / editor cruft ────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+.idea/
+*.swp
