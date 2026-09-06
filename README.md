@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='96'%20height='96'%3E%3Crect%20x='8'%20y='24'%20width='80'%20height='48'%20rx='24'%20fill='%231a73e8'/%3E%3Ccircle%20cx='60'%20cy='48'%20r='17'%20fill='white'/%3E%3Ccircle%20cx='60'%20cy='48'%20r='6'%20fill='%234285f4'/%3E%3C/svg%3E" width="88" alt="Toggle logo" />
+  <img src="assets/logo.svg" width="96" alt="Toggle logo" />
 </p>
 
 <h1 align="center">Toggle Account System</h1>
