@@ -1,154 +1,217 @@
-# Toggle Account System
+<p align="center">
+  <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='96'%20height='96'%3E%3Crect%20x='8'%20y='24'%20width='80'%20height='48'%20rx='24'%20fill='%231a73e8'/%3E%3Ccircle%20cx='60'%20cy='48'%20r='17'%20fill='white'/%3E%3Ccircle%20cx='60'%20cy='48'%20r='6'%20fill='%234285f4'/%3E%3C/svg%3E" width="88" alt="Toggle logo" />
+</p>
 
-Centralized SSO starter for:
+<h1 align="center">Toggle Account System</h1>
 
-- Toggle Docs
-- Toggle Calendar
+<p align="center">
+  <b>A single SSO &amp; account service for <i>Toggle Docs</i>, <i>Toggle Calendar</i> and any future Toggle app</b> — powered by a Google-style hosted sign-in, multi-step onboarding, and OAuth2-style authorization codes with signed JWTs.
+</p>
 
-This repository now demonstrates two layers:
+<p align="center">
+  <img alt="Express" src="https://img.shields.io/badge/Express-5.x-green" />
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-blue" />
+  <img alt="JWT" src="https://img.shields.io/badge/Signed%20JWT-jose-orange" />
+  <img alt="Passwords" src="https://img.shields.io/badge/Passwords-argon2id-purple" />
+  <img alt="OAuth2" src="https://img.shields.io/badge/OAuth2-Auth%20Code-red" />
+  <img alt="Auth UI" src="https://img.shields.io/badge/Auth%20UI-Google--grade-yellow" />
+  <img alt="Status" src="https://img.shields.io/badge/Status-Development-lightgrey" />
+</p>
 
-- API-based JWT authentication for backend clients
-- browser-based hosted login with redirects, similar to a lightweight Google-style sign-in flow
+---
+## ✨ Highlights
 
-## What Is Implemented
+| | |
+|---|---|
+| 🎨 **Google-grade hosted UI** | Dark-mode, Material-styled sign-in with floating labels, avatar chips, guest-mode hint and a language/privacy/terms footer |
+| 🧭 **Multi-step sign-up wizard** | Name → birthday/gender → email (with live availability check) → strong password → review &amp; agree |
+| 🔑 **Two-step sign-in** | Email first, then password — with "Not you? Use a different account" and account chip |
+| 🔐 **Belt-and-suspenders security** | `argon2id` password hashing, SHA-256-throttled magic tokens, JWT signing with `jose`, login audit events |
+| 🗝️ **OAuth2-style flow** | `/authorize` → code → `/token` exchanges for each connected app, signed access tokens scoped by `audience` |
+| 🖥️ **Account dashboard** | `myaccount`-style page with profile details, apps and sign-out |
+| 🌗 **Dark by default** | Full dark theme with a light-mode-ready variable palette |
 
-### Central auth service
+## 🏗️ Architecture
 
-- hosted login UI
-- hosted sign-up UI
-- email verification flow
-- forgot-password and reset-password flow
-- central browser session cookie
-- `POST /auth/login` for direct API login
-- `GET /authorize` for redirect-based browser sign-in
-- `POST /token` for authorization code exchange
-- `GET /logout` for central sign-out
+```mermaid
+flowchart LR
+  subgraph S0["User / Browser"]
+    U["👤 User"]
+  end
 
-### Toggle Docs and Toggle Calendar
+  subgraph AUTH["Auth Service · :4000"]
+    UI["🖥️ Hosted Login UI\n/signup · /login"]
+    FLOW["🔄 Two-step sign-in\nwizard"]
+    CODE["🔑 Authorization Codes"]
+    SES["🍪 Central Session\nmem session store"]
+    JWT["✍️ Sign JWT · jose"]
+  end
 
-- `Continue with Toggle` browser login buttons
-- callback route at `/auth/callback`
-- per-app session cookies that store the access token
-- protected browser pages
-- protected JSON API routes that validate the same JWT
+  subgraph DOCS["Toggle Docs · :4100"]
+    D1["📄 /documents"]
+    D2["🗂️ /api/documents"]
+  end
 
-## Browser SSO Flow
+  subgraph CAL["Toggle Calendar · :4200"]
+    C1["📅 /events"]
+    C2["🗓️ /api/events"]
+  end
 
-1. User opens Toggle Docs or Toggle Calendar.
-2. User clicks `Continue with Toggle`.
-3. The app redirects the browser to the central auth service `/authorize`.
-4. If the user is not already signed in centrally, the auth service redirects to `/login` and shows the hosted sign-in page.
-5. After login, the auth service creates a short-lived authorization code and redirects back to the app callback URL.
-6. The app exchanges that code at `POST /token`.
-7. The app stores the returned JWT in its own HTTP-only cookie.
-8. Protected pages and APIs validate that JWT and extract the central `user_id`.
+  DB[("🗃️ PostgreSQL\nauth_users · tokens · audit")]
 
-## Account Lifecycle Pages
+  U --> UI
+  FLOW --> CODE
+  FLOW --> SES
+  UI --> DB
+  CODE --> JWT
+  D1 --> JWT
+  C1 --> JWT
+  D2 --> JWT
+  C2 --> JWT
+```
 
-The auth service now also exposes:
+## 🔁 Browser SSO flow
 
-- `GET /signup` and `POST /signup`
-- `GET /verify-email`
-- `GET /forgot-password` and `POST /forgot-password`
-- `GET /reset-password` and `POST /reset-password`
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant D as Toggle Docs
+  participant A as Auth Service
+  participant DB as PostgreSQL
 
-Because this starter does not yet send real emails, the hosted pages render local development links for email verification and password reset.
+  U->>D: Open /documents
+  D-->>U: "Continue with Toggle"
+  U->>D: Click continue
+  D->>A: GET /authorize
+  A-->>U: Redirect to /login
+  U->>A: Sign in (email → password)
+  A->>DB: Verify credentials
+  A-->>U: Set session cookie
+  A-->>U: Redirect to /auth/callback?code=...
+  D->>A: POST /token (code)
+  A-->>D: access_token (JWT)
+  D-->>U: Redirect to /documents
+```
+## 🚀 Quick start
 
-## API Login Flow
-
-If you want non-browser login, call:
+> **Requirements:** Node.js 20+, PostgreSQL 14+, and a Git client.
 
 ```bash
-POST /auth/login
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment (copy the template, then fill in real values)
+cp .env.example .env
+
+# 3. Create the database & apply the schema
+createdb -U postgres toggle_auth
+psql -U postgres -d toggle_auth -f database/schema.sql
+
+# 4. Run the three services — one terminal each
+npm run start:auth       # Auth Service  → http://localhost:4000
+npm run start:docs       # Toggle Docs   → http://localhost:4100
+npm run start:calendar   # Toggle Calendar → http://localhost:4200
 ```
 
-That returns a signed JWT directly.
+Open **<http://localhost:4000/signup>** to create an account, then explore the flows.
 
-## Project Structure
+## ⚙️ Environment variables
 
-```text
-database/schema.sql
-src/common/config.js
-src/common/clients.js
-src/common/cookies.js
-src/common/html.js
-src/common/jwt.js
-src/auth-service/authStore.js
-src/auth-service/authenticationService.js
-src/auth-service/server.js
-src/auth-service/routes/auth.js
-src/apps/shared/authMiddleware.js
-src/apps/shared/ssoClient.js
-src/apps/toggle-docs/server.js
-src/apps/toggle-calendar/server.js
-```
+| Variable | Example | Purpose |
+|---|---|---|
+| `PORT` | `4000` | Auth service port |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/toggle_auth` | PostgreSQL connection string |
+| `JWT_ISSUER` | `https://auth.toggle.local` | `iss` claim in signed access tokens |
+| `JWT_KEY_ID` | `toggle-key-1` | `kid` claim (key rotation path) |
+| `JWT_PRIVATE_KEY_PEM` | `-----BEGIN PRIVATE KEY-----…` | RSA signing key (single-line with `\n`) |
+| `JWT_PUBLIC_KEY_PEM` | `-----BEGIN PUBLIC KEY-----…` | RSA verification key (single-line with `\n`) |
+| `AUTH_BASE_URL` | `http://localhost:4000` | Public base URL of the auth service |
+| `TOGGLE_DOCS_PORT` / `BASE_URL` | `4100` / `http://localhost:4100` | Toggle Docs app |
+| `TOGGLE_CALENDAR_PORT` / `BASE_URL` | `4200` / `http://localhost:4200` | Toggle Calendar app |
+| `SSO_SESSION_COOKIE_NAME` | `toggle_sso_session` | Central session cookie |
 
-## Environment Setup
+> 🔐 **Never commit `.env`** — it's already ignored via `.gitignore`. Copy `.env.example` and fill in real keys locally.
 
-1. Copy `.env.example` to `.env`.
-2. Set `DATABASE_URL`.
-3. Paste a real RSA private/public key pair into:
-   - `JWT_PRIVATE_KEY_PEM`
-   - `JWT_PUBLIC_KEY_PEM`
-4. Apply `database/schema.sql` to PostgreSQL.
-5. Install dependencies with `npm install`.
-
-For local development, keep these URLs aligned:
-
-- `AUTH_BASE_URL=http://localhost:4000`
-- `TOGGLE_DOCS_BASE_URL=http://localhost:4100`
-- `TOGGLE_CALENDAR_BASE_URL=http://localhost:4200`
-
-You can generate a local RSA key pair with OpenSSL:
+Generate a local RSA key pair:
 
 ```bash
 openssl genrsa -out private.pem 2048
 openssl rsa -in private.pem -pubout -out public.pem
 ```
 
-Then convert the PEM files into single-line environment values by replacing line breaks with `\n`.
+Then paste the PEM contents into `.env` as single-line values (replace line breaks with `\n`).
+## 🧰 Scripts
 
-## Running Services
+| Command | Description |
+|---|---|
+| `npm run start:auth` | Auth service on `:4000` |
+| `npm run start:docs` | Toggle Docs on `:4100` |
+| `npm run start:calendar` | Toggle Calendar on `:4200` |
+| `npm run check` | Syntax-check every source module |
 
-Run each service in its own terminal:
+## 🛣️ Endpoints
 
-```bash
-npm run start:auth
+### Auth service · `:4000`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/` | Landing page |
+| `GET` / `POST` | `/signup` | Multi-step account creation |
+| `GET` | `/signup/check-email` | Live email availability check (JSON) |
+| `GET` | `/login` | Two-step hosted sign-in |
+| `POST` | `/login` | Password step / authenticate |
+| `GET` | `/verify-email` | Activate account via emailed link |
+| `GET` / `POST` | `/forgot-password` | Request a reset link |
+| `GET` / `POST` | `/reset-password` | Set a new password |
+| `GET` | `/account` | Authenticated dashboard |
+| `GET` | `/authorize` | Start OAuth2-style code flow |
+| `POST` | `/token` | Exchange code → signed JWT |
+| `GET` | `/logout` | End central session |
+| `POST` | `/auth/login` | API sign-in (returns JSON JWT) |
+| `GET` | `/health` | Service + DB health check |
+
+### Toggle Docs · `:4100` &bull; Toggle Calendar · `:4200`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/documents` / `/events` | Protected pages (require JWT cookie) |
+| `GET` | `/api/documents` / `/api/events` | Protected JSON APIs |
+| `GET` | `/auth/callback` | SSO callback (exchanges code) |
+
+## 🗂️ Project structure
+
+```text
+toggle-account-system/
+├── database/
+│   └── schema.sql              # auth_users, tokens, audit, profile fields
+├── src/
+│   ├── common/                 # config, cookies, HTML shell, JWT, clients
+│   ├── auth-service/
+│   │   ├── server.js
+│   │   ├── authenticationService.js
+│   │   ├── authStore.js        # in-memory sessions + auth codes
+│   │   ├── db.js
+│   │   └── routes/auth.js      # hosted UI + OAuth2 endpoints
+│   └── apps/
+│       ├── shared/             # authMiddleware.js, ssoClient.js
+│       ├── toggle-docs/server.js
+│       └── toggle-calendar/server.js
+├── .env.example
+├── .gitignore                  # secrets & local data excluded
+└── package.json
 ```
-
-```bash
-npm run start:docs
-```
-
-```bash
-npm run start:calendar
-```
-
-Default URLs:
-
-- Auth Service: `http://localhost:4000`
-- Toggle Docs: `http://localhost:4100`
-- Toggle Calendar: `http://localhost:4200`
-
-## What To Open In The Browser
-
-- Auth home: `http://localhost:4000`
-- Toggle Docs: `http://localhost:4100`
-- Toggle Calendar: `http://localhost:4200`
-
-From there you can click through the hosted login flow.
-
-## Example API Login Request
+## 🔌 Example API login (non-browser clients)
 
 ```bash
 curl -X POST http://localhost:4000/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"user@example.com\",\"password\":\"Password123!\"}"
+  -d '{"email":"user@example.com","password":"Password123!"}'
 ```
 
-## Example Protected API Requests
+Returns a signed JWT (`access_token`, `Bearer`, expires in 900s) plus `user_id` and `email`.
 
-With bearer token:
+### Use the token on a protected API
 
 ```bash
 curl http://localhost:4100/api/documents \
@@ -160,35 +223,35 @@ curl http://localhost:4200/api/events \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-Or, after browser login, just open:
+## 🎨 UI theme
 
-- `http://localhost:4100/documents`
-- `http://localhost:4200/events`
+A single CSS variable palette drives the look — dark by default, modeled on Google's Material dark surfaces:
 
-## Important Notes
+<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#131314"></span> `--bg` &nbsp;
+<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#1e1f20"></span> `--card` &nbsp;
+<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#8ab4f8"></span> `--g-blue` &nbsp;
+<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#a8c7fa"></span> primary button &nbsp;
+<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#f28b82"></span> `--g-red` &nbsp;
 
-- The authorization code store and central session store are in memory for this starter implementation.
-- If you restart the auth server, browser sessions and pending auth codes are lost.
-- Production systems should move session and authorization code storage to Redis or another shared store.
-- Production SSO should usually evolve toward OAuth 2.0 / OpenID Connect with PKCE, consent handling, refresh token rotation, and key rotation via JWKS.
+Every component references variables, so a light theme is just an override block (e.g. `[data-theme="light"]`).
 
-## Database
+## 🛡️ Security notes
 
-The PostgreSQL schema in `database/schema.sql` includes:
+- **Password hashing** — `argon2id` (memory-hard, designed for passwords)
+- **Magic tokens** (verify / reset) — 256-bit random values, stored as SHA-256 hashes, time-boxed and single-use
+- **Access tokens** — signed RSA JWTs via `jose`; `aud` scoped per app
+- **Lockout** — 5 failed attempts → 15&nbsp;min lock; every event written to `login_audit_events`
+- **Age gate** — sign-up enforces a minimum age (13+) server-side
 
-- immutable `user_id` UUID
-- password hash fields
-- account status
-- refresh token table
-- login audit events
-- email verification token table
-- password reset token table
+## 🧭 Production roadmap
 
-## Next Production Steps
+- [ ] Real transactional email for verification & password reset
+- [ ] Persistent sessions & auth codes (Redis/Postgres) instead of memory
+- [ ] Refresh-token rotation
+- [ ] JWKS endpoint + key rotation
+- [ ] Move fully to OIDC authorization code flow **with PKCE**
+- [ ] Consent screen & app-issued scopes
 
-- seed at least one active user in `auth_users`
-- add real email delivery for verification and password reset
-- store sessions and authorization codes in Redis
-- add refresh token rotation
-- expose a JWKS endpoint
-- move browser login fully to OIDC authorization code flow with PKCE
+## 📄 License
+
+Released under the **MIT License**. Built on two pillars: <img alt="Express" src="https://img.shields.io/badge/Express-5.x-green" width="70" style="vertical-align:middle" /> and <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-blue" width="70" style="vertical-align:middle" /> — with ❤️ for clean OAuth in the browser.
