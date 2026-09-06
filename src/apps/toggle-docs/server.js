@@ -34,11 +34,11 @@ app.get('/auth/callback', async (req, res, next) => {
   try {
     const code = String(req.query.code || '');
     const returnedState = String(req.query.state || '');
-    const expectedState = readStateCookie(req, client);
+    const { state: expectedState, codeVerifier } = readStateCookie(req, client);
 
     clearStateCookie(res, client);
 
-    if (!code || !returnedState || returnedState !== expectedState) {
+    if (!code || !returnedState || returnedState !== expectedState || !codeVerifier) {
       return res.status(400).type('html').send(renderPage({
         title: 'Toggle Docs Sign-in Error',
         eyebrow: 'Toggle Docs',
@@ -48,7 +48,7 @@ app.get('/auth/callback', async (req, res, next) => {
       }));
     }
 
-    const tokenResponse = await exchangeAuthorizationCode(client, code);
+    const tokenResponse = await exchangeAuthorizationCode(client, code, codeVerifier);
     setAppSessionCookie(res, client, tokenResponse.access_token);
 
     return res.redirect(client.protectedPath);

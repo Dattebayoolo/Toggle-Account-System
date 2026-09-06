@@ -130,6 +130,11 @@ Open **<http://localhost:4000/signup>** to create an account, then explore the f
 | `TOGGLE_DOCS_PORT` / `BASE_URL` | `4100` / `http://localhost:4100` | Toggle Docs app |
 | `TOGGLE_CALENDAR_PORT` / `BASE_URL` | `4200` / `http://localhost:4200` | Toggle Calendar app |
 | `SSO_SESSION_COOKIE_NAME` | `toggle_sso_session` | Central session cookie |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | Refresh-token lifetime before rotation expiry |
+| `JWT_PREVIOUS_PUBLIC_KEYS` | `[]` | Optional JSON array of prior keys for JWKS rotation |
+| `SMTP_HOST` / `SMTP_PORT` | e.g. `smtp.gmail.com` / `587` | SMTP server for real verification/reset emails |
+| `SMTP_USER` / `SMTP_PASS` | — | SMTP credentials |
+| `SMTP_SECURE` / `SMTP_FROM` | `false` / `Toggle <no-reply@…>` | TLS mode &amp; from-address |
 
 > 🔐 **Never commit `.env`** — it's already ignored via `.gitignore`. Copy `.env.example` and fill in real keys locally.
 
@@ -165,9 +170,11 @@ Then paste the PEM contents into `.env` as single-line values (replace line brea
 | `GET` / `POST` | `/forgot-password` | Request a reset link |
 | `GET` / `POST` | `/reset-password` | Set a new password |
 | `GET` | `/account` | Authenticated dashboard |
-| `GET` | `/authorize` | Start OAuth2-style code flow |
-| `POST` | `/token` | Exchange code → signed JWT |
-| `GET` | `/logout` | End central session |
+| `GET` | `/authorize` | Start OIDC-style flow (requires PKCE) |
+| `POST` | `/authorize/consent` | Grant / deny app access |
+| `POST` | `/token` | Exchange code (or refresh) → signed JWT |
+| `GET` | `/.well-known/jwks.json` | Public key set for token verification |
+| `GET` | `/logout` | End central session & revoke refresh tokens |
 | `POST` | `/auth/login` | API sign-in (returns JSON JWT) |
 | `GET` | `/health` | Service + DB health check |
 
@@ -190,9 +197,10 @@ toggle-account-system/
 │   ├── auth-service/
 │   │   ├── server.js
 │   │   ├── authenticationService.js
-│   │   ├── authStore.js        # in-memory sessions + auth codes
+│   │   ├── authStore.js        # PostgreSQL sessions, codes, refresh, consent
 │   │   ├── db.js
-│   │   └── routes/auth.js      # hosted UI + OAuth2 endpoints
+│   │   ├── routes/auth.js      # hosted UI + OAuth2/OIDC endpoints
+│   │   └── mailer.js           # Nodemailer SMTP delivery (verify/reset)
 │   └── apps/
 │       ├── shared/             # authMiddleware.js, ssoClient.js
 │       ├── toggle-docs/server.js
@@ -239,18 +247,29 @@ Every component references variables, so a light theme is just an override block
 
 - **Password hashing** — `argon2id` (memory-hard, designed for passwords)
 - **Magic tokens** (verify / reset) — 256-bit random values, stored as SHA-256 hashes, time-boxed and single-use
-- **Access tokens** — signed RSA JWTs via `jose`; `aud` scoped per app
+- **Access tokens** — signed RSA JWTs via `jose`; `aud` scoped per app, optional `scope` claim
 - **Lockout** — 5 failed attempts → 15&nbsp;min lock; every event written to `login_audit_events`
 - **Age gate** — sign-up enforces a minimum age (13+) server-side
+- **PKCE** — mandatory for browser flows (`S256` only); verifier must match the stored challenge
+- **Refresh tokens** — issued hashed, rotated on every use; replaying a rotated token revokes the whole family
+- **Consent** — users confirm app access once per app; scopes are validated against each client's allow-list
 
-## 🧭 Production roadmap
+## ✅ Roadmap — implemented
 
-- [ ] Real transactional email for verification & password reset
-- [ ] Persistent sessions & auth codes (Redis/Postgres) instead of memory
-- [ ] Refresh-token rotation
-- [ ] JWKS endpoint + key rotation
-- [ ] Move fully to OIDC authorization code flow **with PKCE**
-- [ ] Consent screen & app-issued scopes
+Everything below is now built and verified end-to-end:
+
+- [x] **Real transactional email** — Nodemailer SMTP for verification & password reset (falls back to dev links when unset). Configure `SMTP_*` in `.env`.
+- [x] **Persistent sessions & auth codes** — moved from in-memory maps to PostgreSQL (`login_sessions`, `authorization_codes` tables), multi-instance safe
+- [x] **Refresh-token rotation** — `grant_type=refresh_token` with hashed rotating tokens + family-wide reuse detection
+- [x] **JWKS endpoint + key rotation** — `GET /.well-known/jwks.json`; optional previous keys via `JWT_PREVIOUS_PUBLIC_KEYS`
+- [x] **OIDC authorization code flow with PKCE** — `/authorize` requires PKCE, `/token` verifies the verifier
+- [x] **Consent screen & app-issued scopes** — `POST /authorize/consent`, remembered per app in `user_consents`
+
+Remaining stretch goals for a larger rollout:
+
+- [ ] App-issued *dynamic* registrations (auto-register new OAuth clients)
+- [ ] Hosted single sign-out (OIDC `end_session_endpoint`) across apps
+- [ ] WebAuthn / multi-factor second factor
 
 ## 📄 License
 

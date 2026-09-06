@@ -99,3 +99,45 @@ ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS first_name VARCHAR(80) NULL;
 ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS last_name VARCHAR(80) NULL;
 ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS date_of_birth DATE NULL;
 ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS gender VARCHAR(20) NULL;
+
+-- Persistent central login sessions (survive restarts, multi-instance safe)
+CREATE TABLE IF NOT EXISTS login_sessions (
+  session_id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_sessions_user_id ON login_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_login_sessions_expires_at ON login_sessions(expires_at);
+
+-- OAuth2 authorization codes (single-use, PKCE + scope aware)
+CREATE TABLE IF NOT EXISTS authorization_codes (
+  code TEXT PRIMARY KEY,
+  client_id VARCHAR(64) NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+  user_email CITEXT NOT NULL,
+  code_challenge TEXT NULL,
+  code_challenge_method VARCHAR(10) NULL,
+  scope TEXT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_authorization_codes_user_id ON authorization_codes(user_id);
+CREATE INDEX IF NOT EXISTS idx_authorization_codes_expires_at ON authorization_codes(expires_at);
+
+-- Remembered user consent per client + scope set
+CREATE TABLE IF NOT EXISTS user_consents (
+  user_id UUID NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+  client_id VARCHAR(64) NOT NULL,
+  scope TEXT NOT NULL DEFAULT '',
+  granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, client_id)
+);
+
+-- Refresh-token rotation support
+ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS client_id VARCHAR(64) NULL;
+ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS scope TEXT NULL;

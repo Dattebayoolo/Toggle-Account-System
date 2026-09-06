@@ -404,7 +404,7 @@ export async function verifyEmailToken({ token, req }) {
 
 export async function getAccountSummary({ userId }) {
   const result = await db.query(
-    `SELECT user_id, email, first_name, last_name, date_of_birth, gender, created_at, last_login_at, status
+    `SELECT user_id, email, first_name, last_name, date_of_birth, gender, created_at, last_login_at, status, password_changed_at
      FROM auth_users
      WHERE user_id = $1`,
     [userId]

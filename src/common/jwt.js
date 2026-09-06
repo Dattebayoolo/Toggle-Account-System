@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  exportJWK,
   importPKCS8,
   importSPKI,
   jwtVerify,
@@ -27,10 +28,15 @@ function getPublicKey() {
   return publicKeyPromise;
 }
 
-export async function signAccessToken({ userId, email, audience }) {
+export async function signAccessToken({ userId, email, audience, scope = '' }) {
   const privateKey = await getPrivateKey();
 
-  return new SignJWT({ email })
+  const claims = { email };
+  if (scope) {
+    claims.scope = scope;
+  }
+
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: algorithm, kid: config.jwtKeyId })
     .setIssuer(config.jwtIssuer)
     .setSubject(userId)
@@ -50,4 +56,36 @@ export async function verifyAccessToken(token, audience) {
   });
 
   return { payload, protectedHeader };
+}
+
+/**
+ * Public key set for verifiers. Includes the active signing key plus any
+ * previous keys (JWT_PREVIOUS_PUBLIC_KEYS) so tokens issued before a
+ * rotation remain verifiable until they expire.
+ */
+export async function getJwks() {
+  const keys = [];
+
+  const activeJwk = await exportJWK(await getPublicKey());
+  keys.push({
+    ...activeJwk,
+    kid: config.jwtKeyId,
+    use: 'sig',
+    alg: algorithm
+  });
+
+  for (const previous of config.jwtPreviousPublicKeys || []) {
+    if (!previous?.kid || !previous?.pem) {
+      continue;
+    }
+
+    try {
+      const jwk = await exportJWK(await importSPKI(previous.pem, algorithm));
+      keys.push({ ...jwk, kid: previous.kid, use: 'sig', alg: algorithm });
+    } catch (_error) {
+      // Skip malformed previous keys instead of breaking the whole set.
+    }
+  }
+
+  return { keys };
 }

@@ -14,14 +14,28 @@ import {
 } from '../authenticationService.js';
 import { getSsoClient } from '../../common/clients.js';
 import { config } from '../../common/config.js';
-import { createAuthorizationCode, createLoginSession, deleteLoginSession, getLoginSession, consumeAuthorizationCode } from '../authStore.js';
+import crypto from 'node:crypto';
+
+import {
+  consumeAuthorizationCode,
+  createAuthorizationCode,
+  createLoginSession,
+  createRefreshToken,
+  deleteLoginSession,
+  getLoginSession,
+  hasGrantedConsent,
+  revokeRefreshTokensForUser,
+  rotateRefreshToken,
+  saveConsent
+} from '../authStore.js';
 import { clearCookie, parseCookies, setCookie } from '../../common/cookies.js';
-import { escapeHtml, renderAccountChip, renderFieldError, renderGuestRow, renderPage } from '../../common/html.js';
-import { signAccessToken } from '../../common/jwt.js';
+import { escapeHtml, renderAccountChip, renderFieldError, renderGuestRow, renderGoogleAccountHub, renderPage } from '../../common/html.js';
+import { getJwks, signAccessToken } from '../../common/jwt.js';
+import { sendAccountEmail } from '../../common/mailer.js';
 
 const router = express.Router();
 
-function readAuthSession(req) {
+async function readAuthSession(req) {
   const cookies = parseCookies(req.headers.cookie);
   const sessionId = cookies[config.ssoSessionCookieName];
   if (!sessionId) {
@@ -84,10 +98,19 @@ function renderFloatingField({ type = 'text', name, id = '', label, value = '', 
   const fieldId = id || name;
   const autocompleteAttr = autocomplete ? ` autocomplete="${autocomplete}"` : '';
   const ariaInvalid = invalid ? ' aria-invalid="true"' : '';
+  const requiredAttr = required ? ' required' : '';
+  const isPassword = type === 'password';
+  const hasToggleClass = isPassword ? ' has-toggle' : '';
 
-  return `<div class="field">
-          <input type="${type}" name="${name}" id="${fieldId}" placeholder="${placeholder}" value="${escapeHtml(value)}"${autocompleteAttr}${ariaInvalid} required />
+  const pwdToggleBtn = isPassword ? `<button type="button" class="field-pwd-toggle" aria-label="Show password" tabindex="-1" style="position:absolute; right:10px; top:10px; width:36px; height:36px; min-width:36px; max-width:36px; padding:0; margin:0; border:0; background:transparent; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:none; transform:none; transition:none;">
+    <svg class="eye-open" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+    <svg class="eye-closed" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.44-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+  </button>` : '';
+
+  return `<div class="field${hasToggleClass}">
+          <input type="${type}" name="${name}" id="${fieldId}" placeholder="${placeholder}" value="${escapeHtml(value)}"${autocompleteAttr}${ariaInvalid}${requiredAttr} />
           <label for="${fieldId}">${escapeHtml(label)}</label>
+          ${pwdToggleBtn}
         </div>`;
 }
 
@@ -116,50 +139,11 @@ function formatGender(value) {
 }
 
 function renderAccountDashboard({ account }) {
-  const firstName = account.first_name || '';
-  const displayName = firstName || account.email;
-  const fullName = [account.first_name, account.last_name].filter(Boolean).join(' ') || account.email;
-
-  return renderPage({
-    title: 'Toggle Account Dashboard',
-    heading: `Welcome, ${displayName}`,
-    description: 'Manage your central Toggle account and connected apps.',
-    body: `<div class="account-chip">
-          <span class="avatar" aria-hidden="true">${escapeHtml(displayName.charAt(0).toUpperCase())}</span>
-          <span><strong>${escapeHtml(fullName)}</strong><br />${escapeHtml(account.email)}</span>
-        </div>
-
-        <div class="panel">
-          <strong>Account details</strong>
-          <div class="review-list" style="border: 0; padding: 8px 0 0; margin: 0;">
-            <div class="review-item"><span class="review-label">Email</span><span class="review-value">${escapeHtml(account.email)}</span></div>
-            <div class="review-item"><span class="review-label">Name</span><span class="review-value">${escapeHtml(fullName)}</span></div>
-            <div class="review-item"><span class="review-label">Birthday</span><span class="review-value">${escapeHtml(formatDate(account.date_of_birth))}</span></div>
-            <div class="review-item"><span class="review-label">Gender</span><span class="review-value">${escapeHtml(formatGender(account.gender))}</span></div>
-            <div class="review-item"><span class="review-label">Member since</span><span class="review-value">${escapeHtml(formatDate(account.created_at))}</span></div>
-            <div class="review-item"><span class="review-label">Last sign-in</span><span class="review-value">${escapeHtml(formatDate(account.last_login_at))}</span></div>
-            <div class="review-item"><span class="review-label">Status</span><span class="review-value">${escapeHtml(account.status === 'active' ? 'Active' : account.status)}</span></div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <strong>Your apps</strong>
-          <p>Sign in to Toggle apps using this central account.</p>
-        </div>
-        <div class="chip-actions">
-          <a class="button" href="/authorize?client_id=toggle-docs&redirect_uri=${encodeURIComponent(getSsoClient('toggle-docs').redirectUri)}">Continue to Toggle Docs</a>
-          <a class="button secondary" href="/authorize?client_id=toggle-calendar&redirect_uri=${encodeURIComponent(getSsoClient('toggle-calendar').redirectUri)}">Continue to Toggle Calendar</a>
-        </div>
-
-        <div class="bottom-row">
-          <a class="text-link" href="/forgot-password">Change password</a>
-          <a class="button secondary" href="/logout">Sign out</a>
-        </div>`
-  });
+  return renderGoogleAccountHub({ account });
 }
 
-function renderAuthHome(req) {
-  const session = readAuthSession(req);
+async function renderAuthHome(req) {
+  const session = await readAuthSession(req);
   const sessionPanel = session
     ? `${renderAccountChip({ email: session.email, note: 'Central Toggle session' })}
        <div class="bottom-row">
@@ -288,7 +272,13 @@ function renderSignupPage({ error, query = {} }) {
   const flowQuery = pickAuthFlowQuery(query);
   const errorPanel = error ? renderFieldError(error) : '';
 
-  const body = `<form method="post" action="/signup" id="signup-form" novalidate>
+  const body = `<div class="signup-progress">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="signup-progress-fill" style="width: 20%;"></div>
+          </div>
+          <span class="progress-step-text" id="signup-step-indicator">Step 1 of 5</span>
+        </div>
+        <form method="post" action="/signup" id="signup-form" novalidate>
         ${renderFlowHiddenFields(flowQuery)}
         <input type="hidden" name="email" id="email" value="${escapeHtml(query.email || '')}" />
         <div id="form-error">${errorPanel}</div>
@@ -330,9 +320,9 @@ function renderSignupStepName(flowQuery, query) {
   return `<div class="signup-step" data-step="0">
           <div class="row-2">
             ${renderFloatingField({ name: 'firstName', label: 'First name', value: query.firstName || '', autocomplete: 'given-name' })}
-            ${renderFloatingField({ name: 'lastName', label: 'Last name (optional)', value: query.lastName || '', autocomplete: 'family-name' })}
+            ${renderFloatingField({ name: 'lastName', label: 'Last name (optional)', value: query.lastName || '', autocomplete: 'family-name', required: false })}
           </div>
-          <div class="hint">Use the name people call you in everyday life.</div>
+          <div class="hint">Use the name you are known by in everyday life.</div>
           <div class="bottom-row">
             <a class="text-link" href="${buildAuthPath('/login', flowQuery)}">Sign in instead</a>
             <button type="button" data-next>Next</button>
@@ -353,12 +343,24 @@ function renderSignupStepDetails(query) {
 
   return `<div class="signup-step" data-step="1" hidden>
           <div class="row-3">
-            <div class="field"><select name="month" id="month">${renderSignupMonthOptions(query.month)}</select></div>
-            <div class="field"><select name="day" id="day"><option value="">Day</option>${days}</select></div>
-            <div class="field"><select name="year" id="year"><option value="">Year</option>${years}</select></div>
+            <div class="field select-wrap">
+              <select name="month" id="month">${renderSignupMonthOptions(query.month)}</select>
+              <label for="month">Month</label>
+            </div>
+            <div class="field select-wrap">
+              <select name="day" id="day"><option value="">Day</option>${days}</select>
+              <label for="day">Day</label>
+            </div>
+            <div class="field select-wrap">
+              <select name="year" id="year"><option value="">Year</option>${years}</select>
+              <label for="year">Year</label>
+            </div>
           </div>
-          <div class="field"><select name="gender" id="gender">${renderSignupGenderOptions(query.gender)}</select></div>
-          <div class="hint">This helps us confirm it is really you and keep your account safe.</div>
+          <div class="field select-wrap">
+            <select name="gender" id="gender">${renderSignupGenderOptions(query.gender)}</select>
+            <label for="gender">Gender</label>
+          </div>
+          <div class="hint">This helps us verify it's really you and secure your account.</div>
           <div class="bottom-row">
             <button type="button" class="button secondary" data-back>Back</button>
             <button type="button" data-next>Next</button>
@@ -441,15 +443,15 @@ function renderSignupScriptCore() {
     '    "Use 8 or more characters with a mix of letters, numbers & symbols.",',
     '    "Make sure everything looks right before you continue."',
     '  ];',
-    '  var h1 = document.querySelector(".card h1");',
-    '  var desc = document.querySelector(".card > p");',
+    '  var h1 = document.querySelector(".card-heading, .card h1");',
+    '  var desc = document.querySelector(".card-desc, .card > p, .card p");',
     '  var errorSlot = document.getElementById("form-error");',
     '',
     '  function val(id) { var el = document.getElementById(id); return el ? String(el.value || "").trim() : ""; }',
     '  function mark(id, bad) { var el = document.getElementById(id); if (el) { el.setAttribute("aria-invalid", bad ? "true" : "false"); } }',
     '  function showError(msg) {',
     '    errorSlot.innerHTML = \'<div class="field-error" role="alert">\' +',
-    '      \'<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v8h-2V7zm0 10h2v2h-2v-2z"/></svg>\' +',
+    '      \'<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>\' +',
     '      \'<span></span></div>\';',
     '    errorSlot.querySelector("span").textContent = msg;',
     '  }',
@@ -459,6 +461,10 @@ function renderSignupScriptCore() {
     '    steps.forEach(function (s, idx) { s.hidden = idx !== i; });',
     '    if (h1 && titles[i]) { h1.textContent = titles[i]; }',
     '    if (desc && descs[i]) { desc.textContent = descs[i]; }',
+    '    var fill = document.getElementById("signup-progress-fill");',
+    '    if (fill) { fill.style.width = ((i + 1) * 20) + "%"; }',
+    '    var indicator = document.getElementById("signup-step-indicator");',
+    '    if (indicator) { indicator.textContent = "Step " + (i + 1) + " of 5"; }',
     '    if (i === 4) { fillReview(); }',
     '  }',
     '  function sanitize(value) { return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }',
@@ -716,8 +722,12 @@ router.post('/auth/login', async (req, res, next) => {
   }
 });
 
-router.get('/', (req, res) => {
-  res.type('html').send(renderAuthHome(req));
+router.get('/', async (req, res, next) => {
+  try {
+    res.type('html').send(await renderAuthHome(req));
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.get('/login', (req, res) => {
@@ -824,6 +834,19 @@ router.post('/signup', async (req, res, next) => {
 
     const displayName = profile.firstName || registration.email;
 
+    const delivery = await sendAccountEmail({
+      to: registration.email,
+      subject: 'Verify your Toggle Account email',
+      title: 'Verify your email',
+      bodyText: `Welcome to Toggle! Confirm this email address to activate your account.`,
+      linkText: 'Verify email',
+      linkUrl: verificationUrl.toString()
+    });
+
+    const deliveryNote = delivery.delivered
+      ? `A verification email was sent to <strong>${escapeHtml(registration.email)}</strong>.`
+      : `Email delivery is not configured (${escapeHtml(delivery.reason)}). Use the link below while testing.`;
+
     return res.type('html').send(renderMessagePage({
       title: 'Verify Your Email',
       eyebrow: 'Account Setup',
@@ -835,7 +858,8 @@ router.post('/signup', async (req, res, next) => {
         </div>
         <div class="panel">
           <strong>Next step</strong>
-          <p>Open the verification link to activate your account. After verifying, you will be signed in automatically${client ? ` and sent back to <strong>${escapeHtml(client.name)}</strong>` : ''}.</p>
+          <p>${deliveryNote}</p>
+          <p>After verifying, you will be signed in automatically${client ? ` and sent back to <strong>${escapeHtml(client.name)}</strong>` : ''}.</p>
         </div>
         ${renderDeveloperLinkPanel({ url: verificationUrl.toString() })}`,
       actions: `
@@ -876,7 +900,7 @@ router.get('/verify-email', async (req, res, next) => {
     }
 
     /* Google-style: after verifying, the user is signed in automatically. */
-    const sessionId = createLoginSession({
+    const sessionId = await createLoginSession({
       userId: verification.userId,
       email: verification.email
     });
@@ -937,6 +961,22 @@ router.post('/forgot-password', async (req, res, next) => {
 
     const passwordReset = await requestPasswordReset({ email, req });
 
+    let deliveryNote = '';
+    if (passwordReset.resetUrl) {
+      const delivery = await sendAccountEmail({
+        to: passwordReset.email,
+        subject: 'Reset your Toggle Account password',
+        title: 'Password reset',
+        bodyText: 'We received a request to reset the password for your account.',
+        linkText: 'Reset password',
+        linkUrl: passwordReset.resetUrl
+      });
+
+      deliveryNote = delivery.delivered
+        ? `<p>A reset email was sent to <strong>${escapeHtml(passwordReset.email)}</strong>.</p>`
+        : `<p>Email delivery is not configured (${escapeHtml(delivery.reason)}). Use the link below while testing.</p>`;
+    }
+
     return res.type('html').send(renderMessagePage({
       title: 'Reset Link Created',
       eyebrow: 'Account Recovery',
@@ -945,8 +985,9 @@ router.post('/forgot-password', async (req, res, next) => {
       body: `<div class="panel">
         <strong>Next step</strong>
         <p>Use the reset link to choose a new password, then come back and sign in.</p>
+        ${deliveryNote}
       </div>
-      ${renderDeveloperLinkPanel({ url: passwordReset.resetUrl })}`,
+      ${passwordReset.resetUrl ? renderDeveloperLinkPanel({ url: passwordReset.resetUrl }) : ''}`,
       actions: '<a class="button" href="/login">Back to sign in</a><a class="button secondary" href="/signup">Create account</a>'
     }));
   } catch (error) {
@@ -1090,7 +1131,7 @@ router.post('/login', async (req, res, next) => {
         }));
     }
 
-    const sessionId = createLoginSession(authResult.user);
+    const sessionId = await createLoginSession(authResult.user);
     setCookie(res, config.ssoSessionCookieName, sessionId, {
       httpOnly: true,
       sameSite: 'Lax',
@@ -1099,7 +1140,7 @@ router.post('/login', async (req, res, next) => {
 
     if (clientId && redirectUri) {
       const validation = validateClientRequest(clientId, redirectUri);
-      const code = createAuthorizationCode({
+      const code = await createAuthorizationCode({
         clientId,
         redirectUri,
         user: authResult.user
@@ -1123,7 +1164,7 @@ router.get('/account', async (req, res, next) => {
   try {
     const cookies = parseCookies(req.headers.cookie);
     const sessionId = cookies[config.ssoSessionCookieName];
-    const session = sessionId ? readAuthSession(req) : null;
+    const session = sessionId ? await readAuthSession(req) : null;
     if (!session) {
       return res.redirect('/login');
     }
@@ -1141,48 +1182,201 @@ router.get('/account', async (req, res, next) => {
   }
 });
 
-router.get('/authorize', (req, res) => {
-  const {
-    client_id: clientId = '',
-    redirect_uri: redirectUri = '',
-    state = ''
-  } = req.query;
+function verifyPkce(verifier, challenge) {
+  const computed = crypto.createHash('sha256').update(String(verifier)).digest('base64url');
+  return computed === challenge;
+}
 
-  const validation = validateClientRequest(clientId, redirectUri);
-  if (validation.error) {
-    return res.status(400).type('html').send(renderPage({
-      title: 'Authorization Error',
-      eyebrow: 'Central SSO',
-      heading: 'We could not complete sign-in',
-      description: 'The client request was not valid.',
-      body: `<div class="panel error">${escapeHtml(validation.error)}</div>`
-    }));
-  }
-
-  const session = readAuthSession(req);
-  if (!session) {
-    const loginUrl = new URL('/login', config.authBaseUrl);
-    loginUrl.searchParams.set('client_id', clientId);
-    loginUrl.searchParams.set('redirect_uri', redirectUri);
-    if (state) {
-      loginUrl.searchParams.set('state', state);
-    }
-    return res.redirect(loginUrl.toString());
-  }
-
-  const code = createAuthorizationCode({
-    clientId,
-    redirectUri,
-    user: session
+async function issueAuthorizationCode({ client, user, scope, codeChallenge, codeChallengeMethod, state, res }) {
+  const code = await createAuthorizationCode({
+    clientId: client.clientId,
+    redirectUri: client.redirectUri,
+    user,
+    codeChallenge,
+    codeChallengeMethod,
+    scope
   });
 
-  return res.redirect(redirectWithCode({ redirectUri, code, state }));
+  return res.redirect(redirectWithCode({
+    redirectUri: client.redirectUri,
+    code,
+    state
+  }));
+}
+
+function authorizationErrorPage(res, description, errorText) {
+  return res.status(400).type('html').send(renderPage({
+    title: 'Authorization Error',
+    eyebrow: 'Central SSO',
+    heading: 'We could not complete sign-in',
+    description,
+    body: `<div class="panel error">${escapeHtml(errorText)}</div>`
+  }));
+}
+
+router.get('/authorize', async (req, res, next) => {
+  try {
+    const {
+      client_id: clientId = '',
+      redirect_uri: redirectUri = '',
+      state = '',
+      scope = '',
+      code_challenge: codeChallenge = '',
+      code_challenge_method: codeChallengeMethod = ''
+    } = req.query;
+
+    const validation = validateClientRequest(clientId, redirectUri);
+    if (validation.error) {
+      return authorizationErrorPage(res, 'The client request was not valid.', validation.error);
+    }
+
+    const client = validation.client;
+
+    /* PKCE is mandatory for browser flows. */
+    if (!codeChallenge) {
+      return authorizationErrorPage(res, 'The authorization request is missing code_challenge.', 'Browser authorization requests must use PKCE (code_challenge with S256).');
+    }
+    if (codeChallengeMethod && codeChallengeMethod !== 'S256') {
+      return authorizationErrorPage(res, 'Only code_challenge_method=S256 is supported.', 'Unsupported PKCE method.');
+    }
+
+    /* Validate requested scope against what the client is allowed to ask for. */
+    const requestedScopes = scope ? scope.split(' ').filter(Boolean) : [];
+    const allowedScopes = client.scopes || [];
+    if (requestedScopes.some(name => !allowedScopes.includes(name))) {
+      return authorizationErrorPage(res, 'The app requested permissions it is not allowed to ask for.', 'Invalid scope requested.');
+    }
+    const normalizedScope = requestedScopes.join(' ');
+
+    const session = await readAuthSession(req);
+    if (!session) {
+      const loginUrl = new URL('/login', config.authBaseUrl);
+      loginUrl.searchParams.set('client_id', clientId);
+      loginUrl.searchParams.set('redirect_uri', redirectUri);
+      loginUrl.searchParams.set('scope', normalizedScope);
+      loginUrl.searchParams.set('code_challenge', codeChallenge);
+      loginUrl.searchParams.set('code_challenge_method', codeChallengeMethod || 'S256');
+      if (state) {
+        loginUrl.searchParams.set('state', state);
+      }
+      return res.redirect(loginUrl.toString());
+    }
+
+    /* Signed-in users still confirm access once per app (remembered after that). */
+    if (normalizedScope && !(await hasGrantedConsent({ userId: session.userId, clientId }))) {
+      return res.type('html').send(renderConsentPage({
+        client,
+        user: session,
+        scope: normalizedScope,
+        codeChallenge,
+        codeChallengeMethod: codeChallengeMethod || 'S256',
+        state
+      }));
+    }
+
+    return await issueAuthorizationCode({
+      client,
+      user: session,
+      scope: normalizedScope,
+      codeChallenge,
+      codeChallengeMethod: codeChallengeMethod || 'S256',
+      state,
+      res
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+function renderConsentPage({ client, user, scope, codeChallenge, codeChallengeMethod, state }) {
+  const scopeDescriptions = {
+    'documents.read': 'View your Toggle Docs documents',
+    'events.read': 'View your Toggle Calendar events',
+    offline_access: 'Stay signed in (refresh access without re-entering your password)'
+  };
+
+  const scopeItems = scope
+    .split(' ')
+    .filter(Boolean)
+    .map(name => `<li><strong>${escapeHtml(name)}</strong> — ${escapeHtml(scopeDescriptions[name] || 'Access to your Toggle account')}</li>`)
+    .join('');
+
+  const hidden = [
+    ['client_id', client.clientId],
+    ['redirect_uri', client.redirectUri],
+    ['state', state],
+    ['scope', scope],
+    ['code_challenge', codeChallenge],
+    ['code_challenge_method', codeChallengeMethod],
+    ['decision', 'allow']
+  ].map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}" />`).join('');
+
+  return renderPage({
+    title: 'Authorize ' + client.name,
+    eyebrow: 'Privacy Check',
+    heading: `Allow ${client.name} access?`,
+    description: `<strong>${escapeHtml(user.email)}</strong> is signing in to <strong>${escapeHtml(client.name)}</strong>.`,
+    body: `<form method="post" action="/authorize/consent">
+          ${hidden}
+          <div class="panel">
+            <strong>This app will be able to:</strong>
+            <ul style="margin:8px 0 0;padding-left:18px;line-height:1.7;">${scopeItems}</ul>
+          </div>
+          <div class="bottom-row">
+            <a class="button secondary" href="/">Cancel</a>
+            <button type="submit">Allow</button>
+          </div>
+        </form>`
+  });
+}
+
+router.post('/authorize/consent', async (req, res, next) => {
+  try {
+    const {
+      client_id: clientId = '',
+      redirect_uri: redirectUri = '',
+      state = '',
+      scope = '',
+      code_challenge: codeChallenge = '',
+      code_challenge_method: codeChallengeMethod = 'S256'
+    } = req.body ?? {};
+
+    const validation = validateClientRequest(clientId, redirectUri);
+    const session = await readAuthSession(req);
+
+    if (validation.error || !session) {
+      const client = validation.client;
+      const redirectTarget = new URL(client ? client.redirectUri : redirectUri);
+      redirectTarget.searchParams.set('error', 'access_denied');
+      if (state) {
+        redirectTarget.searchParams.set('state', state);
+      }
+      return res.redirect(redirectTarget.toString());
+    }
+
+    await saveConsent({ userId: session.userId, clientId, scope });
+
+    return await issueAuthorizationCode({
+      client: validation.client,
+      user: session,
+      scope,
+      codeChallenge,
+      codeChallengeMethod,
+      state,
+      res
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.post('/token', async (req, res, next) => {
   try {
     const {
+      grant_type: grantType = 'authorization_code',
       code = '',
+      code_verifier: codeVerifier = '',
+      refresh_token: refreshToken = '',
       client_id: clientId = '',
       redirect_uri: redirectUri = ''
     } = req.body ?? {};
@@ -1192,7 +1386,35 @@ router.post('/token', async (req, res, next) => {
       return res.status(400).json({ error: validation.error });
     }
 
-    const authCode = consumeAuthorizationCode(code);
+    const audience = validation.client.audience;
+
+    if (grantType === 'refresh_token') {
+      const rotated = await rotateRefreshToken(refreshToken);
+      if (!rotated || rotated.clientId !== clientId) {
+        return res.status(400).json({ error: 'Refresh token is invalid, expired, or revoked.' });
+      }
+
+      const accessToken = await signAccessToken({
+        userId: rotated.userId,
+        email: (await getAccountSummary({ userId: rotated.userId })).account?.email || '',
+        audience,
+        scope: rotated.scope
+      });
+
+      return res.status(200).json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 900,
+        refresh_token: rotated.token,
+        scope: rotated.scope
+      });
+    }
+
+    if (grantType !== 'authorization_code') {
+      return res.status(400).json({ error: 'Unsupported grant_type.' });
+    }
+
+    const authCode = await consumeAuthorizationCode(code);
     if (!authCode) {
       return res.status(400).json({ error: 'Authorization code is invalid or expired.' });
     }
@@ -1201,13 +1423,21 @@ router.post('/token', async (req, res, next) => {
       return res.status(400).json({ error: 'Authorization code does not match the client request.' });
     }
 
+    /* PKCE verification: the verifier must hash to the stored challenge. */
+    if (authCode.codeChallenge) {
+      if (!codeVerifier || !verifyPkce(codeVerifier, authCode.codeChallenge)) {
+        return res.status(400).json({ error: 'PKCE verification failed.' });
+      }
+    }
+
     const accessToken = await signAccessToken({
       userId: authCode.user.userId,
       email: authCode.user.email,
-      audience: validation.client.audience
+      audience,
+      scope: authCode.scope
     });
 
-    return res.status(200).json({
+    const tokenResponse = {
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: 900,
@@ -1215,26 +1445,59 @@ router.post('/token', async (req, res, next) => {
         user_id: authCode.user.userId,
         email: authCode.user.email
       }
-    });
+    };
+
+    if (authCode.scope) {
+      tokenResponse.scope = authCode.scope;
+    }
+
+    /* Issue a rotating refresh token when the app asked for offline access. */
+    if (authCode.scope.split(' ').includes('offline_access')) {
+      tokenResponse.refresh_token = await createRefreshToken({
+        userId: authCode.user.userId,
+        clientId,
+        scope: authCode.scope
+      });
+    }
+
+    return res.status(200).json(tokenResponse);
   } catch (error) {
     return next(error);
   }
 });
 
-router.get('/logout', (req, res) => {
-  const cookies = parseCookies(req.headers.cookie);
-  const sessionId = cookies[config.ssoSessionCookieName];
+router.get('/logout', async (req, res, next) => {
+  try {
+    const cookies = parseCookies(req.headers.cookie);
+    const sessionId = cookies[config.ssoSessionCookieName];
 
-  if (sessionId) {
-    deleteLoginSession(sessionId);
+    if (sessionId) {
+      const session = await getLoginSession(sessionId);
+      if (session) {
+        await revokeRefreshTokensForUser(session.userId);
+      }
+      await deleteLoginSession(sessionId);
+    }
+
+    clearCookie(res, config.ssoSessionCookieName, {
+      httpOnly: true,
+      sameSite: 'Lax'
+    });
+
+    res.redirect('/login');
+  } catch (error) {
+    return next(error);
   }
+});
 
-  clearCookie(res, config.ssoSessionCookieName, {
-    httpOnly: true,
-    sameSite: 'Lax'
-  });
-
-  res.redirect('/login');
+/* Public key set so resource servers can verify tokens without shared secrets. */
+router.get('/.well-known/jwks.json', async (_req, res, next) => {
+  try {
+    const jwks = await getJwks();
+    return res.status(200).json(jwks);
+  } catch (error) {
+    return next(error);
+  }
 });
 
 export default router;

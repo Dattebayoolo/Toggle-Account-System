@@ -9,7 +9,8 @@ export const ssoClients = {
     redirectUri: `${config.docsBaseUrl}/auth/callback`,
     sessionCookieName: 'toggle_docs_access_token',
     stateCookieName: 'toggle_docs_oauth_state',
-    protectedPath: '/documents'
+    protectedPath: '/documents',
+    scopes: ['documents.read', 'offline_access']
   },
   'toggle-calendar': {
     clientId: 'toggle-calendar',
@@ -19,7 +20,8 @@ export const ssoClients = {
     redirectUri: `${config.calendarBaseUrl}/auth/callback`,
     sessionCookieName: 'toggle_calendar_access_token',
     stateCookieName: 'toggle_calendar_oauth_state',
-    protectedPath: '/events'
+    protectedPath: '/events',
+    scopes: ['events.read', 'offline_access']
   }
 };
 
