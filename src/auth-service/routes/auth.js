@@ -62,7 +62,10 @@ function pickAuthFlowQuery(source = {}) {
   return {
     client_id: source.client_id || '',
     redirect_uri: source.redirect_uri || '',
-    state: source.state || ''
+    state: source.state || '',
+    scope: source.scope || '',
+    code_challenge: source.code_challenge || '',
+    code_challenge_method: source.code_challenge_method || 'S256'
   };
 }
 
@@ -148,10 +151,6 @@ async function renderAuthHome(req) {
     ? `${renderAccountChip({ email: session.email, note: 'Central Toggle session' })}
        <div class="bottom-row">
          <a class="text-link" href="/logout">Sign out</a>
-         <a class="button" href="/authorize?client_id=toggle-docs&redirect_uri=${encodeURIComponent(getSsoClient('toggle-docs').redirectUri)}">Continue to Toggle Docs</a>
-       </div>
-       <div class="actions">
-         <a class="button secondary" href="/authorize?client_id=toggle-calendar&redirect_uri=${encodeURIComponent(getSsoClient('toggle-calendar').redirectUri)}">Continue to Toggle Calendar</a>
        </div>`
     : `<div class="bottom-row">
          <a class="text-link" href="/signup">Create account</a>
@@ -163,7 +162,7 @@ async function renderAuthHome(req) {
     title: 'Toggle Account',
     eyebrow: 'Toggle Account',
     heading: 'Sign in once for all Toggle apps',
-    description: 'This central account signs you in to Toggle Docs, Toggle Calendar, and other Toggle apps.',
+    description: 'This central account signs you in to all apps connected to Toggle Account.',
     body: sessionPanel
   });
 }
@@ -705,7 +704,7 @@ router.post('/auth/login', async (req, res, next) => {
     const accessToken = await signAccessToken({
       userId: authResult.user.userId,
       email: authResult.user.email,
-      audience: ['toggle-docs', 'toggle-calendar']
+      audience: config.defaultAudience
     });
 
     return res.status(200).json({
@@ -768,8 +767,13 @@ router.post('/signup', async (req, res, next) => {
       passwordConfirm = '',
       client_id: clientId = '',
       redirect_uri: redirectUri = '',
-      state = ''
+      state = '',
+      scope = '',
+      code_challenge: codeChallenge = '',
+      code_challenge_method: codeChallengeMethod = 'S256'
     } = req.body ?? {};
+
+    const signupClient = clientId ? getSsoClient(clientId) : null;
 
     const formError = (message) =>
       renderSignupPage({ error: message, query: req.body ?? {} });
@@ -831,6 +835,13 @@ router.post('/signup', async (req, res, next) => {
     if (state) {
       verificationUrl.searchParams.set('state', state);
     }
+    if (scope) {
+      verificationUrl.searchParams.set('scope', scope);
+    }
+    if (codeChallenge) {
+      verificationUrl.searchParams.set('code_challenge', codeChallenge);
+      verificationUrl.searchParams.set('code_challenge_method', codeChallengeMethod);
+    }
 
     const displayName = profile.firstName || registration.email;
 
@@ -859,7 +870,7 @@ router.post('/signup', async (req, res, next) => {
         <div class="panel">
           <strong>Next step</strong>
           <p>${deliveryNote}</p>
-          <p>After verifying, you will be signed in automatically${client ? ` and sent back to <strong>${escapeHtml(client.name)}</strong>` : ''}.</p>
+          <p>After verifying, you will be signed in automatically${signupClient ? ` and sent back to <strong>${escapeHtml(signupClient.name)}</strong>` : ''}.</p>
         </div>
         ${renderDeveloperLinkPanel({ url: verificationUrl.toString() })}`,
       actions: `
@@ -920,19 +931,15 @@ router.get('/verify-email', async (req, res, next) => {
     if (clientId && redirectUri) {
       const validation = validateClientRequest(clientId, redirectUri);
       if (!validation.error) {
-        const code = createAuthorizationCode({
-          clientId,
-          redirectUri,
-          user: {
-            userId: verification.userId,
-            email: verification.email
-          }
-        });
-
-        return res.redirect(redirectWithCode({
-          redirectUri: validation.client.redirectUri,
-          code,
-          state
+        /* Route through /authorize (now that the user is verified and signed in)
+           so the consent screen is shown for first-time access. */
+        return res.redirect(buildAuthPath('/authorize', {
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          state: String(req.query.state || ''),
+          scope: String(req.query.scope || ''),
+          code_challenge: String(req.query.code_challenge || ''),
+          code_challenge_method: String(req.query.code_challenge_method || 'S256')
         }));
       }
     }
@@ -1139,17 +1146,15 @@ router.post('/login', async (req, res, next) => {
     });
 
     if (clientId && redirectUri) {
-      const validation = validateClientRequest(clientId, redirectUri);
-      const code = await createAuthorizationCode({
-        clientId,
-        redirectUri,
-        user: authResult.user
-      });
-
-      return res.redirect(redirectWithCode({
-        redirectUri: validation.client.redirectUri,
-        code,
-        state
+      /* Route back through /authorize (now that the user has a session) so the
+         consent screen is shown for first-time access instead of skipping it. */
+      return res.redirect(buildAuthPath('/authorize', {
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        state,
+        scope: req.body.scope || '',
+        code_challenge: req.body.code_challenge || '',
+        code_challenge_method: req.body.code_challenge_method || 'S256'
       }));
     }
 
@@ -1263,7 +1268,7 @@ router.get('/authorize', async (req, res, next) => {
     }
 
     /* Signed-in users still confirm access once per app (remembered after that). */
-    if (normalizedScope && !(await hasGrantedConsent({ userId: session.userId, clientId }))) {
+    if (!(await hasGrantedConsent({ userId: session.userId, clientId }))) {
       return res.type('html').send(renderConsentPage({
         client,
         user: session,
@@ -1290,16 +1295,34 @@ router.get('/authorize', async (req, res, next) => {
 
 function renderConsentPage({ client, user, scope, codeChallenge, codeChallengeMethod, state }) {
   const scopeDescriptions = {
-    'documents.read': 'View your Toggle Docs documents',
-    'events.read': 'View your Toggle Calendar events',
-    offline_access: 'Stay signed in (refresh access without re-entering your password)'
+    offline_access:    { label: 'Stay signed in without re-entering your password',      icon: '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>' }
   };
 
-  const scopeItems = scope
+  const scopeList = scope
     .split(' ')
-    .filter(Boolean)
-    .map(name => `<li><strong>${escapeHtml(name)}</strong> — ${escapeHtml(scopeDescriptions[name] || 'Access to your Toggle account')}</li>`)
+    .filter(Boolean);
+
+  const scopeItems = scopeList
+    .map(name => {
+      const desc = scopeDescriptions[name] || { label: 'Access to your Toggle account', icon: '<path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm-1 13H9v-2h2v2zm0-4H9V7h2v6zm4 4h-2v-2h2v2zm0-4h-2V7h2v6z"/>' };
+      return `
+      <li style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--g-border-subtle);">
+        <span style="flex:none;width:32px;height:32px;border-radius:8px;background:var(--g-primary-container);display:inline-flex;align-items:center;justify-content:center;color:var(--g-primary);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${desc.icon}</svg>
+        </span>
+        <span style="display:flex;flex-direction:column;gap:2px;">
+          <strong style="font-size:14px;font-weight:500;color:var(--g-text-primary);">${escapeHtml(desc.label)}</strong>
+          <span style="font-size:12px;color:var(--g-text-tertiary);font-family:var(--font-body);">${escapeHtml(name)}</span>
+        </span>
+      </li>`;
+    })
     .join('');
+
+  // App icon: first letter of client name in a colored pill
+  const appInitial = escapeHtml((client.name || '?')[0].toUpperCase());
+
+  // User avatar: first letter of email
+  const userInitial = escapeHtml((user.email || '?')[0].toUpperCase());
 
   const hidden = [
     ['client_id', client.clientId],
@@ -1309,24 +1332,67 @@ function renderConsentPage({ client, user, scope, codeChallenge, codeChallengeMe
     ['code_challenge', codeChallenge],
     ['code_challenge_method', codeChallengeMethod],
     ['decision', 'allow']
-  ].map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}" />`).join('');
+  ].map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value || '')}" />`).join('');
+
+  const body = `
+    <form method="post" action="/authorize/consent" id="consent-form">
+      ${hidden}
+
+      <!-- App + user identity banner -->
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--g-surface-subtle);border:1px solid var(--g-border-subtle);border-radius:14px;margin-bottom:18px;">
+        <!-- App icon -->
+        <div style="flex:none;width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#1a73e8,#4285f4);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--font-google);font-size:20px;font-weight:600;box-shadow:0 2px 8px rgba(26,115,232,0.35);">
+          ${appInitial}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:600;color:var(--g-text-primary);font-family:var(--font-google);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(client.name)}</div>
+          <div style="font-size:12px;color:var(--g-text-tertiary);margin-top:2px;">${escapeHtml(client.redirectUri)}</div>
+        </div>
+      </div>
+
+      <!-- Signed-in account chip -->
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--card-bg);border:1px solid var(--g-border-subtle);border-radius:999px;width:fit-content;max-width:100%;margin-bottom:18px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#1a73e8;color:#fff;font-family:var(--font-google);font-size:13px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;flex:none;">${userInitial}</div>
+        <span style="font-size:13px;color:var(--g-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(user.email)}</span>
+      </div>
+
+      <!-- Permission list -->
+      <div style="border:1px solid var(--g-border-subtle);border-radius:14px;padding:4px 16px;background:var(--g-surface-subtle);">
+        <p style="font-size:13px;font-weight:600;color:var(--g-text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 4px;">
+          ${escapeHtml(client.name)} will be able to:
+        </p>
+        <ul style="list-style:none;margin:0;padding:0;">
+          ${scopeItems}
+          <!-- Last item has no bottom border -->
+          <style>#consent-form li:last-child{border-bottom:0!important}</style>
+        </ul>
+      </div>
+
+      <!-- Security note -->
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:11px 14px;border-radius:10px;background:var(--g-primary-container);border:1px solid rgba(168,199,250,0.18);">
+        <svg style="flex:none;color:var(--g-primary);margin-top:1px;" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 14H9V9h2v6zm4 0h-2V9h2v6z"/>
+        </svg>
+        <span style="font-size:12px;color:var(--g-text-secondary);line-height:1.5;">
+          Toggle will share your basic profile info with <strong style="color:var(--g-text-primary);">${escapeHtml(client.name)}</strong>. You can revoke access anytime from your Toggle Account settings.
+        </span>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="bottom-row" style="margin-top:24px;">
+        <a class="button secondary" href="/" id="consent-cancel-btn">Cancel</a>
+        <button type="submit" id="consent-allow-btn">Allow access</button>
+      </div>
+    </form>`;
 
   return renderPage({
-    title: 'Authorize ' + client.name,
-    eyebrow: 'Privacy Check',
-    heading: `Allow ${client.name} access?`,
-    description: `<strong>${escapeHtml(user.email)}</strong> is signing in to <strong>${escapeHtml(client.name)}</strong>.`,
-    body: `<form method="post" action="/authorize/consent">
-          ${hidden}
-          <div class="panel">
-            <strong>This app will be able to:</strong>
-            <ul style="margin:8px 0 0;padding-left:18px;line-height:1.7;">${scopeItems}</ul>
-          </div>
-          <div class="bottom-row">
-            <a class="button secondary" href="/">Cancel</a>
-            <button type="submit">Allow</button>
-          </div>
-        </form>`
+    title: `Sign in to ${client.name} — Toggle`,
+    eyebrow: 'Authorization Request',
+    eyebrowTone: 'neutral',
+    heading: 'Are you sure?',
+    description: `<strong>${escapeHtml(client.name)}</strong> is asking for permission to access your Toggle account.`,
+    body,
+    singleColumn: false
   });
 }
 

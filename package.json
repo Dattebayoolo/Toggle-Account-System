@@ -3,12 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Centralized SSO starter for Toggle Docs and Toggle Calendar.",
+  "description": "Centralized SSO service for Toggle apps.",
   "scripts": {
     "start:auth": "node src/auth-service/server.js",
-    "start:docs": "node src/apps/toggle-docs/server.js",
-    "start:calendar": "node src/apps/toggle-calendar/server.js",
-    "check": "node --check src/common/config.js && node --check src/common/cookies.js && node --check src/common/html.js && node --check src/common/clients.js && node --check src/common/jwt.js && node --check src/auth-service/db.js && node --check src/auth-service/authStore.js && node --check src/auth-service/authenticationService.js && node --check src/auth-service/server.js && node --check src/auth-service/routes/auth.js && node --check src/apps/shared/authMiddleware.js && node --check src/apps/shared/ssoClient.js && node --check src/apps/toggle-docs/server.js && node --check src/apps/toggle-calendar/server.js"
+    "check": "node --check src/common/config.js && node --check src/common/cookies.js && node --check src/common/html.js && node --check src/common/clients.js && node --check src/common/jwt.js && node --check src/auth-service/db.js && node --check src/auth-service/authStore.js && node --check src/auth-service/authenticationService.js && node --check src/auth-service/server.js && node --check src/auth-service/routes/auth.js && node --check src/apps/shared/authMiddleware.js && node --check src/apps/shared/ssoClient.js"
   },
   "dependencies": {
     "argon2": "^0.41.1",

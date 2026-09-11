@@ -1,30 +1,59 @@
-import { config } from './config.js';
+/**
+ * Central registry of apps allowed to use this SSO service.
+ * Register your real apps here — each entry must define a unique clientId,
+ * its own audience (used as the JWT `aud` claim), and an exact redirect URI
+ * that the auth service validates on every authorize/token request.
+ */
+export const ssoClients = {};
 
-export const ssoClients = {
-  'toggle-docs': {
-    clientId: 'toggle-docs',
-    name: 'Toggle Docs',
-    audience: 'toggle-docs',
-    appBaseUrl: config.docsBaseUrl,
-    redirectUri: `${config.docsBaseUrl}/auth/callback`,
-    sessionCookieName: 'toggle_docs_access_token',
-    stateCookieName: 'toggle_docs_oauth_state',
-    protectedPath: '/documents',
-    scopes: ['documents.read', 'offline_access']
-  },
-  'toggle-calendar': {
-    clientId: 'toggle-calendar',
-    name: 'Toggle Calendar',
-    audience: 'toggle-calendar',
-    appBaseUrl: config.calendarBaseUrl,
-    redirectUri: `${config.calendarBaseUrl}/auth/callback`,
-    sessionCookieName: 'toggle_calendar_access_token',
-    stateCookieName: 'toggle_calendar_oauth_state',
-    protectedPath: '/events',
-    scopes: ['events.read', 'offline_access']
+/**
+ * Programmatic registration helper for apps wired up at startup, e.g.:
+ *   registerSsoClient({
+ *     clientId: 'my-app',
+ *     name: 'My App',
+ *     audience: 'my-app',
+ *     appBaseUrl: 'https://my-app.example.com',
+ *     redirectPath: '/auth/callback',
+ *     sessionCookieName: 'my_app_access_token',
+ *     stateCookieName: 'my_app_oauth_state',
+ *     protectedPath: '/dashboard',
+ *     scopes: ['offline_access']
+ *   });
+ */
+export function registerSsoClient({
+  clientId,
+  name,
+  audience,
+  appBaseUrl,
+  redirectPath = '/auth/callback',
+  sessionCookieName,
+  stateCookieName,
+  protectedPath = '/',
+  scopes = ['offline_access']
+}) {
+  if (!clientId || ssoClients[clientId]) {
+    throw new Error(`SSO client is missing or already registered: ${clientId}`);
   }
-};
+
+  ssoClients[clientId] = {
+    clientId,
+    name: name || clientId,
+    audience: audience || clientId,
+    appBaseUrl,
+    redirectUri: `${appBaseUrl}${redirectPath}`,
+    sessionCookieName: sessionCookieName || `${clientId.replace(/-/g, '_')}_access_token`,
+    stateCookieName: stateCookieName || `${clientId.replace(/-/g, '_')}_oauth_state`,
+    protectedPath,
+    scopes
+  };
+
+  return ssoClients[clientId];
+}
 
 export function getSsoClient(clientId) {
   return ssoClients[clientId] || null;
+}
+
+export function listSsoClients() {
+  return Object.values(ssoClients);
 }

@@ -12,11 +12,10 @@ function requireEnv(name) {
 
 export const config = {
   authServicePort: Number(process.env.PORT || 4000),
-  docsPort: Number(process.env.TOGGLE_DOCS_PORT || 4100),
-  calendarPort: Number(process.env.TOGGLE_CALENDAR_PORT || 4200),
   authBaseUrl: process.env.AUTH_BASE_URL || `http://localhost:${Number(process.env.PORT || 4000)}`,
-  docsBaseUrl: process.env.TOGGLE_DOCS_BASE_URL || `http://localhost:${Number(process.env.TOGGLE_DOCS_PORT || 4100)}`,
-  calendarBaseUrl: process.env.TOGGLE_CALENDAR_BASE_URL || `http://localhost:${Number(process.env.TOGGLE_CALENDAR_PORT || 4200)}`,
+  // Audience used when tokens are issued directly (e.g. POST /auth/login) outside
+  // of a specific app's authorize flow.
+  defaultAudience: process.env.DEFAULT_TOKEN_AUDIENCE || 'toggle',
   databaseUrl: requireEnv('DATABASE_URL'),
   jwtIssuer: requireEnv('JWT_ISSUER'),
   jwtKeyId: requireEnv('JWT_KEY_ID'),

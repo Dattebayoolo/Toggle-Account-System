@@ -2215,18 +2215,8 @@ export function renderGoogleAccountHub({ account }) {
         <div class="apps-menu" id="apps-menu">
           <div class="apps-menu-title">Toggle Workspace Apps</div>
           <div class="apps-grid">
-            <a class="app-item" href="/authorize?client_id=toggle-docs&redirect_uri=http%3A%2F%2Flocalhost%3A4100%2Fcallback">
-              <div class="app-item-icon" style="background: rgba(66, 133, 244, 0.15); color: #4285F4;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-              </div>
-              <span class="app-item-name">Docs</span>
-            </a>
-            <a class="app-item" href="/authorize?client_id=toggle-calendar&redirect_uri=http%3A%2F%2Flocalhost%3A4200%2Fcallback">
-              <div class="app-item-icon" style="background: rgba(52, 168, 83, 0.15); color: #34A853;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
-              </div>
-              <span class="app-item-name">Calendar</span>
-            </a>
+            <!-- Registered SSO apps render here. Add entries for your real apps,
+                 e.g. <a class="app-item" href="/authorize?client_id=YOUR_APP&redirect_uri=...">. -->
           </div>
         </div>
 
@@ -2335,7 +2325,7 @@ export function renderGoogleAccountHub({ account }) {
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <h2 class="hub-card-title">Account storage</h2>
-                  <p class="hub-card-desc">Your storage is shared across Toggle Docs, Toggle Calendar, and central account services.</p>
+                  <p class="hub-card-desc">Your storage is shared across your central account services.</p>
                 </div>
                 <button type="button" class="hub-btn secondary" style="height: 32px; font-size: 13px;" onclick="switchTab('tab-payments')">Manage storage</button>
               </div>
@@ -2346,15 +2336,11 @@ export function renderGoogleAccountHub({ account }) {
                 <span style="color: var(--g-text-secondary);">Included Free Tier</span>
               </div>
               <div class="storage-bar">
-                <div class="storage-bar-segment" style="width: 2%; background: #4285F4;" title="Toggle Docs (250 MB)"></div>
-                <div class="storage-bar-segment" style="width: 0.5%; background: #34A853;" title="Toggle Calendar (50 MB)"></div>
                 <div class="storage-bar-segment" style="width: 0.8%; background: #FBBC05;" title="Identity & Profile (100 MB)"></div>
               </div>
               <div class="storage-legend">
-                <span class="storage-item"><span class="storage-dot" style="background: #4285F4;"></span>Docs (250 MB)</span>
-                <span class="storage-item"><span class="storage-dot" style="background: #34A853;"></span>Calendar (50 MB)</span>
                 <span class="storage-item"><span class="storage-dot" style="background: #FBBC05;"></span>Profile (100 MB)</span>
-                <span class="storage-free">14.6 GB available</span>
+                <span class="storage-free">14.9 GB available</span>
               </div>
             </div>
           </div>
@@ -2416,7 +2402,7 @@ export function renderGoogleAccountHub({ account }) {
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
                 </div>
                 <h2 class="hub-card-title">Account subscriptions</h2>
-                <p class="hub-card-desc">Manage connected Google Workspace-like services including Toggle Docs and Toggle Calendar.</p>
+                <p class="hub-card-desc">Manage connected services and apps that use your central account.</p>
               </div>
               <button type="button" class="hub-btn text-btn" onclick="switchTab('tab-payments')">View subscriptions &rarr;</button>
             </div>
@@ -2649,30 +2635,8 @@ export function renderGoogleAccountHub({ account }) {
               <p class="hub-card-desc">Applications authorized to use your central Toggle Single Sign-On credentials.</p>
             </div>
             <div>
-              <div class="hub-row">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(66, 133, 244, 0.15); color: #4285F4; display: flex; align-items: center; justify-content: center;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-                  </div>
-                  <div>
-                    <div style="font-weight: 500;">Toggle Docs</div>
-                    <div style="font-size: 12px; color: var(--g-text-secondary);">Full Workspace Documents Access &bull; OAuth 2.0 PKCE</div>
-                  </div>
-                </div>
-                <span class="hub-badge success">Authorized</span>
-              </div>
-              <div class="hub-row">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(52, 168, 83, 0.15); color: #34A853; display: flex; align-items: center; justify-content: center;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
-                  </div>
-                  <div>
-                    <div style="font-weight: 500;">Toggle Calendar</div>
-                    <div style="font-size: 12px; color: var(--g-text-secondary);">Schedule &amp; Event Management &bull; OAuth 2.0 PKCE</div>
-                  </div>
-                </div>
-                <span class="hub-badge success">Authorized</span>
-              </div>
+              <!-- Authorized third-party app rows render here. Add rows for your
+                   real apps, e.g. <div class="hub-row">...<span class="hub-badge success">Authorized</span></div>. -->
             </div>
           </div>
 
@@ -2685,7 +2649,7 @@ export function renderGoogleAccountHub({ account }) {
             <div>
               <div class="hub-row">
                 <span class="hub-row-label">Toggle Workspace</span>
-                <span class="hub-row-value">2 apps active (Docs, Calendar)</span>
+                <span class="hub-row-value">No apps active</span>
                 <span class="hub-row-action">&rarr;</span>
               </div>
               <div class="hub-row">
@@ -2891,7 +2855,7 @@ export function renderGoogleAccountHub({ account }) {
           <div class="hub-card">
             <div class="hub-card-header">
               <h2 class="hub-card-title">Contacts</h2>
-              <p class="hub-card-desc">Organize your contacts so you can collaborate easily on Toggle Docs and Events.</p>
+              <p class="hub-card-desc">Organize your contacts so you can collaborate easily across your apps.</p>
             </div>
             <div>
               <div class="hub-row">
@@ -2976,15 +2940,11 @@ export function renderGoogleAccountHub({ account }) {
                   <button type="button" class="hub-btn secondary" style="height: 28px; font-size: 12px;" onclick="alert('Toggle One storage plans: Upgrade to 100 GB or 2 TB.')">Get more storage</button>
                 </div>
                 <div class="storage-bar">
-                  <div class="storage-bar-segment" style="width: 2%; background: #4285F4;" title="Toggle Docs (250 MB)"></div>
-                  <div class="storage-bar-segment" style="width: 0.5%; background: #34A853;" title="Toggle Calendar (50 MB)"></div>
                   <div class="storage-bar-segment" style="width: 0.8%; background: #FBBC05;" title="Identity & Profile (100 MB)"></div>
                 </div>
                 <div class="storage-legend">
-                  <span class="storage-item"><span class="storage-dot" style="background: #4285F4;"></span>Docs (250 MB)</span>
-                  <span class="storage-item"><span class="storage-dot" style="background: #34A853;"></span>Calendar (50 MB)</span>
                   <span class="storage-item"><span class="storage-dot" style="background: #FBBC05;"></span>Profile (100 MB)</span>
-                  <span class="storage-free">14.6 GB free</span>
+                  <span class="storage-free">14.9 GB free</span>
                 </div>
               </div>
             </div>
@@ -3028,16 +2988,6 @@ export function renderGoogleAccountHub({ account }) {
             </div>
             <div>
               <div class="hub-row">
-                <span class="hub-row-label">Toggle Docs</span>
-                <span class="hub-row-value">Full Access &bull; Document Management &amp; Collaboration</span>
-                <span class="hub-badge success">Included</span>
-              </div>
-              <div class="hub-row">
-                <span class="hub-row-label">Toggle Calendar</span>
-                <span class="hub-row-value">Full Access &bull; Event &amp; Schedule Planner</span>
-                <span class="hub-badge success">Included</span>
-              </div>
-              <div class="hub-row">
                 <span class="hub-row-label">Central Identity SSO</span>
                 <span class="hub-row-value">OAuth 2.0 PKCE &bull; Single Sign-On</span>
                 <span class="hub-badge success">Included</span>
@@ -3058,7 +3008,7 @@ export function renderGoogleAccountHub({ account }) {
         <div style="background: var(--g-surface-subtle); border-radius: 12px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px;">
           <div style="margin-bottom: 6px;">&bull; <strong>Profile &amp; Identity:</strong> Name, Email, Birthday, Gender</div>
           <div style="margin-bottom: 6px;">&bull; <strong>Security Telemetry:</strong> Session history, Argon2id audit events</div>
-          <div>&bull; <strong>Workspace Scopes:</strong> Toggle Docs &amp; Toggle Calendar access grants</div>
+          <div>&bull; <strong>Workspace Scopes:</strong> Access grants for apps connected to your account</div>
         </div>
         <div style="display: flex; justify-content: flex-end; gap: 12px;">
           <button type="button" class="hub-btn secondary" onclick="closeTakeoutModal()">Cancel</button>
@@ -3072,7 +3022,7 @@ export function renderGoogleAccountHub({ account }) {
       <div class="hub-modal">
         <h2 style="font-family: var(--font-google); font-size: 20px; color: #ea4335; margin: 0 0 8px;">Delete your Toggle Account?</h2>
         <p style="font-size: 14px; color: var(--g-text-secondary); line-height: 1.5; margin: 0 0 20px;">
-          You are about to permanently delete your central Toggle Account for <strong>${escapeHtml(email)}</strong>. All your saved documents, calendar appointments, and credentials will be removed.
+          You are about to permanently delete your central Toggle Account for <strong>${escapeHtml(email)}</strong>. All your account data, app access grants, and credentials will be removed.
         </p>
         <div style="display: flex; justify-content: flex-end; gap: 12px;">
           <button type="button" class="hub-btn secondary" onclick="closeDeleteModal()">Cancel</button>
@@ -3128,7 +3078,7 @@ export function renderGoogleAccountHub({ account }) {
             last_password_change: '${escapeHtml(pwdChanged)}',
             last_login: '${escapeHtml(lastLogin)}'
           },
-          connected_apps: ['Toggle Docs', 'Toggle Calendar']
+          connected_apps: []
         };
         var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         var url = URL.createObjectURL(blob);
