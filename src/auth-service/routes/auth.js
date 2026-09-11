@@ -1267,27 +1267,15 @@ router.get('/authorize', async (req, res, next) => {
       return res.redirect(loginUrl.toString());
     }
 
-    /* Signed-in users still confirm access once per app (remembered after that). */
-    if (!(await hasGrantedConsent({ userId: session.userId, clientId }))) {
-      return res.type('html').send(renderConsentPage({
-        client,
-        user: session,
-        scope: normalizedScope,
-        codeChallenge,
-        codeChallengeMethod: codeChallengeMethod || 'S256',
-        state
-      }));
-    }
-
-    return await issueAuthorizationCode({
+    /* Always confirm access, every time — like Google's app consent screen. */
+    return res.type('html').send(renderConsentPage({
       client,
       user: session,
       scope: normalizedScope,
       codeChallenge,
       codeChallengeMethod: codeChallengeMethod || 'S256',
-      state,
-      res
-    });
+      state
+    }));
   } catch (error) {
     return next(error);
   }

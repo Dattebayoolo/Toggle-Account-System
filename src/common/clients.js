@@ -6,6 +6,17 @@
  */
 export const ssoClients = {};
 
+/* Toggle Calendar app (separate repo, zero-dependency dev server on :3000). */
+registerSsoClient({
+  clientId: 'toggle-calendar',
+  name: 'Toggle Calendar',
+  audience: 'toggle-calendar',
+  appBaseUrl: process.env.TOGGLE_CALENDAR_BASE_URL || 'http://localhost:3000',
+  redirectPath: '/auth/callback',
+  protectedPath: '/app',
+  scopes: ['profile.read', 'offline_access']
+});
+
 /**
  * Programmatic registration helper for apps wired up at startup, e.g.:
  *   registerSsoClient({
