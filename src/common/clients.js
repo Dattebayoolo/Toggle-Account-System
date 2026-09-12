@@ -17,6 +17,17 @@ registerSsoClient({
   scopes: ['profile.read', 'offline_access']
 });
 
+/* Toggle Contacts app (Vite dev server on :5173). */
+registerSsoClient({
+  clientId: 'toggle-contacts',
+  name: 'Toggle Contacts',
+  audience: 'toggle-contacts',
+  appBaseUrl: process.env.TOGGLE_CONTACTS_BASE_URL || 'http://localhost:5173',
+  redirectPath: '/auth/callback',
+  protectedPath: '/',
+  scopes: ['profile.read', 'offline_access']
+});
+
 /* Toggle Mail app (Vite dev server on :4400). */
 registerSsoClient({
   clientId: 'toggle-mail',
