@@ -104,17 +104,78 @@ npm install
 # 2. Configure environment (copy the template, then fill in real values)
 cp .env.example .env
 
-# 3. Create the database & apply the schema
+# 3. Start PostgreSQL (see 🐘 Running PostgreSQL below) and create the database
 createdb -U postgres toggle_auth
 psql -U postgres -d toggle_auth -f database/schema.sql
 
-# 4. Run the three services — one terminal each
-npm run start:auth       # Auth Service  → http://localhost:4000
-npm run start:docs       # Toggle Docs   → http://localhost:4100
-npm run start:calendar   # Toggle Calendar → http://localhost:4200
+# 4. Run the auth service
+npm run start:auth        # Auth Service → http://localhost:4000
 ```
 
 Open **<http://localhost:4000/signup>** to create an account, then explore the flows.
+
+## 🐘 Running PostgreSQL
+
+The auth service stores sessions, authorization codes, refresh tokens, consents and users in PostgreSQL — **nothing works until it's running** (`/health` reports DB status).
+
+This project uses the **binary (zip) distribution** of PostgreSQL at `C:\Users\kazam.mahmood\pgsql` (no Windows service installed). Run everything from its `bin` folder.
+
+**Start the server**
+
+```powershell
+C:\Users\kazam.mahmood\pgsql\bin\pg_ctl.exe start `
+  -D C:\Users\kazam.mahmood\pgsql\data `
+  -l C:\Users\kazam.mahmood\pgsql\postgres.log
+```
+
+**Check it's accepting connections**
+
+```powershell
+C:\Users\kazam.mahmood\pgsql\bin\pg_isready.exe
+# → localhost:5432 - accepting connections
+```
+
+**Stop the server** (do this *before* closing the terminal that started it — killing the console kills Postgres ungracefully and forces crash recovery on the next start):
+
+```powershell
+C:\Users\kazam.mahmood\pgsql\bin\pg_ctl.exe stop -D C:\Users\kazam.mahmood\pgsql\data
+```
+
+**Connect with psql** (credentials match `DATABASE_URL` in `.env` — user `postgres`, password `postgres`):
+
+```powershell
+$env:PGPASSWORD = 'postgres'
+C:\Users\kazam.mahmood\pgsql\bin\psql.exe -h localhost -U postgres -d toggle_auth
+```
+
+**First-time setup** (skip if the `toggle_auth` database already exists):
+
+```powershell
+# initialize a fresh data directory (only once)
+C:\Users\kazam.mahmood\pgsql\bin\initdb.exe -D C:\Users\kazam.mahmood\pgsql\data -U postgres
+
+# start, then create the project database & schema
+C:\Users\kazam.mahmood\pgsql\bin\pg_ctl.exe start -D C:\Users\kazam.mahmood\pgsql\data -l C:\Users\kazam.mahmood\pgsql\postgres.log
+C:\Users\kazam.mahmood\pgsql\bin\createdb.exe -h localhost -U postgres toggle_auth
+C:\Users\kazam.mahmood\pgsql\bin\psql.exe -h localhost -U postgres -d toggle_auth -f database/schema.sql
+```
+
+**Optional — install as a Windows service** so it starts on boot and survives terminal closes:
+
+```powershell
+# one-time registration (run an elevated terminal)
+C:\Users\kazam.mahmood\pgsql\bin\pg_ctl.exe register -N TogglePostgres -D C:\Users\kazam.mahmood\pgsql\data
+
+net start TogglePostgres    # start
+net stop TogglePostgres     # stop
+```
+
+**Troubleshooting**
+
+- `ECONNREFUSED 127.0.0.1:5432` in the auth service logs → Postgres is not running; start it with `pg_ctl start` above.
+- `another server might be running` from `pg_ctl start` → a Postgres process is already up (or a stale `postmaster.pid`); check with `pg_isready` and, if the server is truly dead, delete `C:\Users\kazam.mahmood\pgsql\data\postmaster.pid` before starting.
+- Reset a forgotten password by editing `pg_hba.conf` (`trust`), restarting, and `ALTER USER postgres WITH PASSWORD 'postgres';`.
+
 
 ## ⚙️ Environment variables
 

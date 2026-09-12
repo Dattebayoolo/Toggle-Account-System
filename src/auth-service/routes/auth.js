@@ -42,7 +42,15 @@ async function readAuthSession(req) {
     return null;
   }
 
-  return getLoginSession(sessionId);
+  try {
+    return await getLoginSession(sessionId);
+  } catch (error) {
+    // A corrupt/unparseable session cookie (e.g. not a valid UUID) or an
+    // unreachable session store must not take the page down with a 500 — treat
+    // the user as signed out so they get redirected to the login screen.
+    console.error(`Session lookup failed (${error?.code || error?.message}). Treating as signed out.`);
+    return null;
+  }
 }
 
 function validateClientRequest(clientId, redirectUri) {

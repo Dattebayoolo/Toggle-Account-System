@@ -17,6 +17,17 @@ registerSsoClient({
   scopes: ['profile.read', 'offline_access']
 });
 
+/* Toggle Mail app (Vite dev server on :4400). */
+registerSsoClient({
+  clientId: 'toggle-mail',
+  name: 'Toggle Mail',
+  audience: 'toggle-mail',
+  appBaseUrl: process.env.TOGGLE_MAIL_BASE_URL || 'http://localhost:4400',
+  redirectPath: '/auth/callback',
+  protectedPath: '/',
+  scopes: ['profile.read', 'offline_access']
+});
+
 /**
  * Programmatic registration helper for apps wired up at startup, e.g.:
  *   registerSsoClient({
