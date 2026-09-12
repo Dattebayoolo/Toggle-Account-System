@@ -1261,7 +1261,12 @@ router.get('/authorize', async (req, res, next) => {
     }
     const normalizedScope = requestedScopes.join(' ');
 
-    const session = await readAuthSession(req);
+    /* `prompt=login` forces re-authentication (Google-style), e.g. when the
+       user clicks "Add another account" in a connected app — the existing
+       central session is ignored so a different account can be signed in. */
+    const forceLogin = String(req.query.prompt || '').toLowerCase() === 'login';
+
+    const session = forceLogin ? null : await readAuthSession(req);
     if (!session) {
       const loginUrl = new URL('/login', config.authBaseUrl);
       loginUrl.searchParams.set('client_id', clientId);
